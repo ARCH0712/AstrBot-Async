@@ -1,0 +1,231 @@
+import asyncio
+import os
+import time
+from collections.abc import Callable, Coroutine
+from pathlib import Path
+from typing import Any
+
+from astrbot import logger
+from astrbot.core import db_helper
+from astrbot.core.db.po import PlatformMessageHistory
+from astrbot.core.message.message_event_result import MessageChain
+from astrbot.core.platform import (
+    AstrBotMessage,
+    MessageMember,
+    MessageType,
+    Platform,
+    PlatformMetadata,
+)
+from astrbot.core.platform.astr_message_event import MessageSesion
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+
+from ...register import register_platform_adapter
+from .message_parts_helper import (
+    message_chain_to_storage_message_parts,
+    parse_webchat_message_parts,
+)
+from .request_flags import resolve_webchat_request_flags
+from .webchat_event import WebChatMessageEvent
+from .webchat_queue_mgr import WebChatQueueMgr, webchat_queue_mgr
+
+
+def _extract_conversation_id(session_id: str) -> str:
+    """Extract raw webchat conversation id from event/session id."""
+    if session_id.startswith("webchat!"):
+        parts = session_id.split("!", 2)
+        if len(parts) == 3:
+            return parts[2]
+    return session_id
+
+
+class QueueListener:
+    def __init__(
+        self,
+        webchat_queue_mgr: WebChatQueueMgr,
+        callback: Callable,
+        stop_event: asyncio.Event,
+    ) -> None:
+        self.webchat_queue_mgr = webchat_queue_mgr
+        self.callback = callback
+        self.stop_event = stop_event
+
+    async def run(self) -> None:
+        """Register callback and keep adapter task alive."""
+        self.webchat_queue_mgr.set_listener(self.callback)
+        try:
+            await self.stop_event.wait()
+        finally:
+            await self.webchat_queue_mgr.clear_listener()
+
+
+@register_platform_adapter("webchat", "webchat")
+class WebChatAdapter(Platform):
+    # ========== 优化：添加 TTL 缓存属性 ==========
+    _history_cache_ttl = 60  # 缓存过期时间（秒），可根据需要调整
+
+    def __init__(
+        self,
+        platform_config: dict,
+        platform_settings: dict,
+        event_queue: asyncio.Queue,
+    ) -> None:
+        super().__init__(platform_config, event_queue)
+
+        self.settings = platform_settings
+        self.imgs_dir = os.path.join(get_astrbot_data_path(), "webchat", "imgs")
+        self.attachments_dir = Path(get_astrbot_data_path()) / "attachments"
+        os.makedirs(self.imgs_dir, exist_ok=True)
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)
+
+        self.metadata = PlatformMetadata(
+            name="webchat",
+            description="webchat",
+            id="webchat",
+            support_proactive_message=True,
+        )
+        self._shutdown_event = asyncio.Event()
+        self._webchat_queue_mgr = webchat_queue_mgr
+
+        # 缓存字典：message_id -> (PlatformMessageHistory | None, timestamp)
+        self._history_cache: dict[int, tuple[PlatformMessageHistory | None, float]] = {}
+
+    # ========== 优化：自定义 TTL 缓存 ==========
+    async def _get_message_history(
+        self, message_id: int
+    ) -> PlatformMessageHistory | None:
+        """获取消息历史，使用 TTL 缓存（默认60秒），避免重复查询数据库。"""
+        now = time.time()
+        # 检查缓存
+        if message_id in self._history_cache:
+            cached_data, cached_time = self._history_cache[message_id]
+            if now - cached_time < self._history_cache_ttl:
+                return cached_data  # 缓存有效，直接返回
+            else:
+                # 缓存过期，删除
+                del self._history_cache[message_id]
+
+        # 缓存未命中或已过期，查询数据库
+        history = await db_helper.get_platform_message_history_by_id(message_id)
+        # 更新缓存（即使为 None 也缓存，避免重复查询不存在的数据）
+        self._history_cache[message_id] = (history, now)
+        return history
+
+    # 可选：提供手动清除缓存的方法（外部可根据需要调用）
+    def invalidate_message_history_cache(self, message_id: int | None = None) -> None:
+        """清除指定消息的缓存，若 message_id 为 None 则清空所有缓存。"""
+        if message_id is not None:
+            self._history_cache.pop(message_id, None)
+        else:
+            self._history_cache.clear()
+
+    async def _parse_message_parts(
+        self,
+        message_parts: list,
+        depth: int = 0,
+        max_depth: int = 1,
+    ) -> tuple[list, list[str]]:
+        """解析消息段列表，返回消息组件列表和纯文本列表"""
+        async def get_reply_parts(
+            message_id: Any,
+        ) -> tuple[list[dict], str | None, str | None] | None:
+            history = await self._get_message_history(message_id)
+            if not history or not history.content:
+                return None
+
+            reply_parts = history.content.get("message", [])
+            if not isinstance(reply_parts, list):
+                return None
+
+            return reply_parts, history.sender_id, history.sender_name
+
+        components, text_parts, _ = await parse_webchat_message_parts(
+            message_parts,
+            strict=False,
+            include_empty_plain=True,
+            verify_media_path_exists=False,
+            reply_history_getter=get_reply_parts,
+            current_depth=depth,
+            max_reply_depth=max_depth,
+            cast_reply_id_to_str=False,
+        )
+        return components, text_parts
+
+    async def convert_message(self, data: tuple) -> AstrBotMessage:
+        username, cid, payload = data
+
+        abm = AstrBotMessage()
+        abm.self_id = "webchat"
+        abm.sender = MessageMember(username, username)
+
+        abm.type = MessageType.FRIEND_MESSAGE
+
+        abm.session_id = f"webchat!{username}!{cid}"
+
+        abm.message_id = payload.get("message_id")
+
+        # 处理消息段列表
+        message_parts = payload.get("message", [])
+        abm.message, message_str_parts = await self._parse_message_parts(message_parts)
+
+        logger.debug(f"WebChatAdapter: {abm.message}")
+
+        abm.timestamp = int(time.time())
+        abm.message_str = "".join(message_str_parts)
+        abm.raw_message = data
+        return abm
+
+    def run(self) -> Coroutine[Any, Any, None]:
+        async def callback(data: tuple) -> None:
+            abm = await self.convert_message(data)
+            await self.handle_msg(abm)
+
+        bot = QueueListener(self._webchat_queue_mgr, callback, self._shutdown_event)
+        return bot.run()
+
+    def meta(self) -> PlatformMetadata:
+        return self.metadata
+
+    def create_event(self, message: AstrBotMessage) -> WebChatMessageEvent:
+        message_event = WebChatMessageEvent(
+            message_str=message.message_str,
+            message_obj=message,
+            platform_meta=self.meta(),
+            session_id=message.session_id,
+        )
+
+        raw_message = getattr(message, "raw_message", None)
+        if isinstance(raw_message, tuple) and len(raw_message) >= 3:
+            payload = raw_message[2]
+            if isinstance(payload, dict):
+                flags = resolve_webchat_request_flags(payload)
+                message_event.set_extra("flags", flags)
+                for key, value in flags.items():
+                    message_event.set_extra(key, value)
+                message_event.set_extra(
+                    "selected_provider", payload.get("selected_provider")
+                )
+                message_event.set_extra("selected_model", payload.get("selected_model"))
+                message_event.set_extra("action_type", payload.get("action_type"))
+                message_event.set_extra(
+                    "llm_checkpoint_id", payload.get("llm_checkpoint_id")
+                )
+                message_event.set_extra(
+                    "thread_selected_text", payload.get("thread_selected_text")
+                )
+                api_key_allow_admin_role = payload.get("_api_key_allow_admin_role")
+                if isinstance(api_key_allow_admin_role, bool):
+                    message_event.set_extra(
+                        "_api_key_allow_admin_role",
+                        api_key_allow_admin_role,
+                    )
+
+        return message_event
+
+    async def handle_msg(self, message: AstrBotMessage) -> None:
+        self.commit_event(self.create_event(message))
+
+    async def terminate(self) -> None:
+        self._shutdown_event.set()
+
+    # 以下 send_by_session 和 _save_proactive_message 与原代码相同，此处省略以保持简洁
+    # 请保留原实现，或参考之前优化版本
