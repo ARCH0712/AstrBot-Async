@@ -1,125 +1,136 @@
-![AstrBot-Logo-Simplified](https://github.com/user-attachments/assets/36fb04e4-cc75-4454-bd8b-049d11aa86f9)
+Release: v4.27.2-Async-Stable
+🚀 版本概述
+AstrBot v4.27.2-Async-Stable 是基于 v4.27.2-Async 的稳定修复版。在保留大多数性能优化的同时，回退了 aiocqhttp 适配器相关文件到官方版本，解决了因适配器优化导致的消息处理异常（终端无日志、无法接收/发送消息）问题。
 
-<div align="center">
+⚠️ 本分支仍为非官方版本，与官方后续更新不兼容。
+官方原版：AstrBotDevs/AstrBot
 
-# ⚡ AstrBot v4.27.2-Async
+📌 与 v4.27.2-Async 的区别
+模块	v4.27.2-Async	v4.27.2-Async-Stable
+aiocqhttp 适配器	优化版（引入消息问题）	✅ 回退至官方 v4.27.2 版本
+其他核心优化（数据库、I/O、知识库等）	✅ 已优化	✅ 保持不变
+🧩 包含的优化（与 v4.27.2-Async 相同）
+数据库模块：新增复合索引、get_session_conversations 重写为两步查询、减少无谓删除操作。
 
-**极致异步性能优化版 · 非官方分支**
+文件 I/O：SSL 上下文复用、64KB 缓冲写入、进度回调降频。
 
-<br>
+知识库管理：懒加载、并发检索、结果缓存（LRU 128）。
 
-> [!CAUTION]
-> **⚠️ 这不是官方版本！**
->
-> 本仓库是 [AstrBotDevs/AstrBot](https://github.com/AstrBotDevs/AstrBot) 的**性能优化分支**。
-> - **与官方后续版本不兼容**，执行 `git pull` 或直接覆盖升级将**丢失所有优化**。
-> - 本分支适合**长期独立维护**。
-> - 官方原版请移步：[AstrBotDevs/AstrBot](https://github.com/AstrBotDevs/AstrBot)
+LLM 元数据：内存+本地文件缓存、请求超时、降级警告。
 
-<br>
+备份导出：分页查询、异步化 I/O、线程池遍历。
 
-<div>
-<img src="https://img.shields.io/badge/版本-4.27.2--Async-76bad9?style=flat-square&label=Release">
-<img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="python">
-<img src="https://img.shields.io/badge/状态-稳定-brightgreen?style=flat-square">
-<img src="https://img.shields.io/github/license/ARCH0712/AstrBot-Async?color=76bad9&style=flat-square">
-</div>
+消息组件：统一文件源解析、URI 解码缓存。
 
-<br>
+消息链工具：生成器优化、提前返回。
 
-<a href="https://github.com/ARCH0712/AstrBot-Async/releases">📦 下载 Releases</a> ｜
-<a href="https://github.com/ARCH0712/AstrBot-Async/issues">📝 反馈 Issues</a> ｜
-<a href="https://github.com/AstrBotDevs/AstrBot">📖 官方文档</a>
+详细改动请查看 Release Notes of v4.27.2-Async。
 
-</div>
+🛠️ 修复的问题
+✅ 修复 aiocqhttp 适配器在优化后无法正常接收/发送消息的问题（终端无日志）。
 
----
+✅ 回退后消息收发功能恢复稳定，日志正常输出。
 
-## 📌 这个仓库是什么？
+📦 安装方法
+方式一：下载 ZIP 包（推荐）
+点击本页面下方的 "Source code (zip)" 下载。
 
-本仓库是 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 的**非官方性能优化分支**，专注于**极致异步性能调优**。
+解压后进入目录，执行：
 
-相比官方版本，优化后：
-- ✅ **CPU 占用更低**
-- ✅ **内存占用更少**
-- ✅ **消息响应更快**
-- ✅ **启动速度更快**
-
-你可以在保留 AstrBot 全部功能的前提下，获得更流畅的运行体验。
-
----
-
-## 🚀 本分支优化亮点
-
-| 模块 | 优化内容 |
-|------|----------|
-| **消息组件** | 统一文件源解析、URI 解码缓存、减少 `os.path.exists` 调用 |
-| **数据库** | 新增复合索引、查询重写、减少无谓删除操作 |
-| **文件 I/O** | SSL 上下文复用、64KB 缓冲写入、进度回调降频 |
-| **知识库** | 懒加载、并发检索、检索结果缓存（LRU） |
-| **协议适配** | 合并文本段、流式输出列表拼接、并发推送、TTL 缓存 |
-| **备份导出** | 分页查询、异步化 I/O、线程池遍历 |
-| **LLM 元数据** | 内存+本地文件缓存、10s 超时、降级警告 |
-
-详细改动请查看 [Release Notes](https://github.com/ARCH0712/AstrBot-Async/releases)。
-
----
-
-## 📦 快速安装
-
-### 方式一：直接下载 Release ZIP（推荐）
-1. 前往 [Releases](https://github.com/ARCH0712/AstrBot-Async/releases) 页面
-2. 下载 `Source code (zip)` 并解压
-3. 在解压目录执行：
-```bash
+bash
 uv tool install . --python 3.12
 astrbot init   # 首次运行初始化
 astrbot run
-方式二：通过 Git 克隆
+方式二：Git 克隆
 bash
-git clone -b v4.27.2-Async https://github.com/ARCH0712/AstrBot-Async.git
+git clone -b v4.27.2-Async-Stable https://github.com/ARCH0712/AstrBot-Async.git
 cd AstrBot-Async
 uv tool install . --python 3.12
 astrbot init
 astrbot run
-🔄 更新与补救策略
-你的操作	后果	补救方案
-直接 git pull 官方仓库	所有优化被覆盖，性能回退	用本分支代码重新覆盖 astrbot/core/ 目录
-覆盖升级到官方新 Release	优化丢失，新索引不会被创建	保留旧版 data/，手动合入优化
-想合并官方新功能到优化版	可能产生代码冲突	使用 git diff > patch，新版本上 git apply
-建议：将此分支视为独立项目长期维护。
+⚠️ 注意事项
+本版本不与官方后续版本兼容，请勿对官方仓库执行 git pull。
 
-👤 作者与联系方式
-维护者：Arch712（@ARCH0712）
+如果之前使用 v4.27.2-Async 并遇到了消息问题，强烈建议升级到此版本。
 
-💬 QQ：1658796850
+所有 data/ 目录下的数据（对话、配置、知识库）无需迁移，直接替换源码文件即可。
 
-📺 Bilibili：UID3493123588098281
+👤 维护者
+Arch712（@ARCH0712）
 
-📧 Email：LuoTianyi0712-@outlook.com
+QQ：1658796850
 
-🏠 GitHub：ARCH0712
+B站：UID3493123588098281
 
-🙏 致谢
-AstrBotDevs 提供的卓越开源项目
+Email：LuoTianyi0712-@outlook.com
 
-所有 AstrBot 官方 Contributor 和社区开发者
+Enjoy a stable and faster AstrBot! 🎉
 
-使用本分支的每一位用户 ❤️
+Release: v4.27.2-Async-Stable
+🚀 Overview
+AstrBot v4.27.2-Async-Stable is a stable hotfix release based on v4.27.2-Async. It reverts the aiocqhttp adapter back to the official version while keeping all other performance optimizations, fixing the message handling issues (no terminal logs, message receiving/sending failures) caused by the optimized adapter.
 
-📄 版权声明
-本仓库所有代码基于 AstrBotDevs/AstrBot 修改，遵循 MIT 协议。
+⚠️ This is still a non-official fork and is not compatible with future official updates.
+Official version: AstrBotDevs/AstrBot
 
-官方版权归 AstrBotDevs 所有
+📌 Differences from v4.27.2-Async
+Module	v4.27.2-Async	v4.27.2-Async-Stable
+aiocqhttp adapter	Optimized (caused message issues)	✅ Reverted to official v4.27.2
+Other core optimizations (DB, I/O, KB, etc.)	✅ Optimized	✅ Kept unchanged
+🧩 Included Optimizations (same as v4.27.2-Async)
+Database: Added composite indexes, rewrote get_session_conversations, reduced redundant deletions.
 
-优化分支版权归 Arch712 所有
+File I/O: SSL context reuse, 64KB buffered writes, progress callback frequency reduction.
 
-MIT License
+Knowledge Base: Lazy loading, concurrent retrieval, LRU result caching.
 
-Copyright (c) 2021 Lxns-Network（AstrBot 官方）
-Copyright (c) 2026 Arch712（AstrBot-Async 优化分支）
+LLM Metadata: In-memory + local file cache, 10s timeout, degraded logging.
 
-<div align="center">
-高性能，永不止步。
+Backup Export: Paginated queries, async I/O, thread-pool traversal.
 
-<img src="https://files.astrbot.app/watashiwa-koseino-desukara.gif" width="100"/></div> ```
+Message Components: Unified file source parsing, URI decoding cache.
+
+Message Chain Tools: Generator expressions, early returns.
+
+For full details, see Release Notes of v4.27.2-Async.
+
+🛠️ Fixed Issues
+✅ Fixed aiocqhttp adapter message handling failures (no terminal output) caused by the optimization.
+
+✅ After revert, message sending/receiving works stably, and logs are printed normally.
+
+📦 Installation
+Option 1: Download ZIP (Recommended)
+Click "Source code (zip)" below.
+
+Extract and navigate to the folder, then run:
+
+bash
+uv tool install . --python 3.12
+astrbot init   # first time only
+astrbot run
+Option 2: Git Clone
+bash
+git clone -b v4.27.2-Async-Stable https://github.com/ARCH0712/AstrBot-Async.git
+cd AstrBot-Async
+uv tool install . --python 3.12
+astrbot init
+astrbot run
+⚠️ Important Notes
+This version is not compatible with future official updates. Do not run git pull on the official repository.
+
+If you were using v4.27.2-Async and encountered message issues, we strongly recommend upgrading to this version.
+
+All data in the data/ directory (conversations, config, knowledge base) does not need migration; just replace the source files.
+
+👤 Maintainer
+Arch712（@ARCH0712）
+
+QQ：1658796850
+
+Bilibili：UID3493123588098281
+
+Email：LuoTianyi0712-@outlook.com
+
+Enjoy a stable and faster AstrBot! 🎉
+

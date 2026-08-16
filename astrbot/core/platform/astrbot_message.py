@@ -12,7 +12,6 @@ class MessageMember:
     nickname: str | None = None
 
     def __str__(self) -> str:
-        # 使用 f-string 来构建返回的字符串表示形式
         return (
             f"User ID: {self.user_id},"
             f"Nickname: {self.nickname if self.nickname else 'N/A'}"
@@ -35,7 +34,6 @@ class Group:
     """所有群成员"""
 
     def __str__(self) -> str:
-        # 使用 f-string 来构建返回的字符串表示形式
         return (
             f"Group ID: {self.group_id}\n"
             f"Name: {self.group_name if self.group_name else 'N/A'}\n"
@@ -87,3 +85,39 @@ class AstrBotMessage:
                 self.group = Group(group_id=value)
         else:
             self.group = None
+
+    # ========== 新增：场景判断方法 ==========
+    def is_group_chat(self) -> bool:
+        """
+        判断当前消息是否为群聊消息。
+        基于 session_id 和 group 字段双重判断，适配多平台。
+        """
+        # 方法1：通过 group 字段判断（最直接）
+        if self.group is not None:
+            return True
+
+        # 方法2：通过 session_id 格式判断（兜底）
+        session_id = getattr(self, 'session_id', '')
+        if not session_id:
+            return False
+
+        # 常见群聊 session_id 格式：
+        # - QQ群: "qq:GroupMessage:123456"
+        # - 微信群: "wechat:Group:123456"
+        # - 飞书群: "lark:Group:123456"
+        # - WebChat: "webchat!user!group" (第三个段为群标识)
+        group_keywords = ['GroupMessage', ':Group:', ':group:', '!group!', 'Group:']
+        for keyword in group_keywords:
+            if keyword in session_id:
+                return True
+
+        # 如果 session_id 包含 "webchat!"，通过 payload 中的 group 标志判断
+        if session_id.startswith('webchat!'):
+            raw = getattr(self, 'raw_message', None)
+            if isinstance(raw, tuple) and len(raw) >= 3:
+                payload = raw[2]
+                if isinstance(payload, dict):
+                    if payload.get('is_group') or payload.get('group_id'):
+                        return True
+
+        return False

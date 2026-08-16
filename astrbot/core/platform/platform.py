@@ -89,6 +89,55 @@ class Platform(abc.ABC):
             and self.config.get("webhook_uuid")
         )
 
+    # ========== 新增：统一场景判断方法 ==========
+    @staticmethod
+    def is_group_session(session_id: str) -> bool:
+        """
+        根据 session_id 判断是否为群聊会话。
+        适配多平台 session_id 格式。
+        
+        Args:
+            session_id: 会话 ID 字符串
+            
+        Returns:
+            bool: True 表示群聊，False 表示私聊或未知
+        """
+        if not session_id:
+            return False
+
+        # 常见群聊 session_id 格式关键词
+        # 按出现频率排序，提升匹配效率
+        group_keywords = (
+            "GroupMessage",   # QQ 群消息
+            ":Group:",        # 通用格式
+            ":group:",        # 通用格式小写
+            "!group!",        # WebChat 等自定义格式
+            "Group:",         # 部分平台
+            "GROUP",          # 部分平台大写
+        )
+        for keyword in group_keywords:
+            if keyword in session_id:
+                return True
+
+        # 特殊处理：某些平台的群聊 ID 可能不含上述关键词，
+        # 但通常 session_id 会包含 "group" 字样，这里做兜底
+        if "group" in session_id.lower():
+            return True
+
+        return False
+
+    def get_session_scenario(self, session_id: str) -> str:
+        """
+        获取会话场景类型。
+        
+        Args:
+            session_id: 会话 ID 字符串
+            
+        Returns:
+            str: 'group' 或 'private'
+        """
+        return "group" if self.is_group_session(session_id) else "private"
+
     def get_stats(self) -> dict:
         """获取平台统计信息"""
         meta = self.meta()

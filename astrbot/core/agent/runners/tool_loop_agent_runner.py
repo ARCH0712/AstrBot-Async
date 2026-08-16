@@ -230,10 +230,27 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         request_max_retries: int | None = None,
         tool_result_overflow_dir: str | None = None,
         read_tool: FunctionTool | None = None,
+        # ========== PRIVATE_CHAT_OPT: 新增私聊标志 ==========
+        is_private_chat: bool = False,
         **kwargs: T.Any,
     ) -> None:
         self.req = request
         self.streaming = streaming
+        self._is_private_chat = is_private_chat  # 保存标志
+
+        # PRIVATE_CHAT_OPT: 私聊场景自动调整参数
+        if is_private_chat:
+            logger.debug("Private chat mode enabled: applying lightweight agent settings")
+            # 限制上下文轮数
+            if enforce_max_turns == -1:
+                enforce_max_turns = 10
+            # 截断轮数
+            if truncate_turns == 1:
+                truncate_turns = 1
+            # 减少重试次数
+            if request_max_retries is None or request_max_retries > 2:
+                request_max_retries = 2
+
         self.enforce_max_turns = enforce_max_turns
         self.llm_compress_instruction = llm_compress_instruction
         self.llm_compress_keep_recent_ratio = llm_compress_keep_recent_ratio
@@ -257,6 +274,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             custom_token_counter=self.custom_token_counter,
             custom_compressor=self.custom_compressor,
         )
+        # PRIVATE_CHAT_OPT: 私聊时限制上下文最大 token 数，避免过度消耗
+        if is_private_chat and self.request_context_manager_config.max_context_tokens == 0:
+            self.request_context_manager_config.max_context_tokens = 60000
+
         self.request_context_manager = ContextManager(
             self.request_context_manager_config
         )
@@ -287,12 +308,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._same_tool_streak = 0
 
         # These two are used for tool schema mode handling
-        # We now have two modes:
-        # - "full": use full tool schema for LLM calls, default.
-        # - "skills_like": use light tool schema for LLM calls, and re-query with param-only schema when needed.
-        #   Light tool schema does not include tool parameters.
-        #   This can reduce token usage when tools have large descriptions.
-        # See #4681
         self.tool_schema_mode = tool_schema_mode
         self._tool_schema_param_set = None
         self._skill_like_raw_tool_set = None
@@ -303,10 +318,8 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
             self._skill_like_raw_tool_set = tool_set
             light_set = tool_set.get_light_tool_set()
             self._tool_schema_param_set = tool_set.get_param_only_tool_set()
-            # MODIFIE the req.func_tool to use light tool schemas
             self.req.func_tool = light_set
 
-        # append existing messages in the run context
         messages = bind_checkpoint_messages(request.contexts or [])
         if (
             request.prompt is not None
@@ -1003,6 +1016,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self, max_step: int
     ) -> T.AsyncGenerator[AgentResponse, None]:
         """Process steps until the agent is done."""
+        # PRIVATE_CHAT_OPT: 私聊场景限制最大步数，避免长时间循环
+        if self._is_private_chat:
+            max_step = min(max_step, 3)  # 私聊最多3步
+            logger.debug(f"Private chat mode: max_step limited to {max_step}")
+
         step_count = 0
         while not self.done() and step_count < max_step:
             step_count += 1
