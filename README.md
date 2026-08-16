@@ -1,6 +1,4 @@
 
-
-```markdown
 # ⚡ AstrBot v4.27.2-Async-Stable
 
 **极致异步性能优化版 · 稳定修复版**
