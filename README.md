@@ -1,136 +1,178 @@
-Release: v4.27.2-Async-Stable
-🚀 版本概述
-AstrBot v4.27.2-Async-Stable 是基于 v4.27.2-Async 的稳定修复版。在保留大多数性能优化的同时，回退了 aiocqhttp 适配器相关文件到官方版本，解决了因适配器优化导致的消息处理异常（终端无日志、无法接收/发送消息）问题。
+好的，我来为你写一份清晰完整的 README，涵盖所有优化文件、回退文件和私聊修复。
 
-⚠️ 本分支仍为非官方版本，与官方后续更新不兼容。
-官方原版：AstrBotDevs/AstrBot
+---
 
-📌 与 v4.27.2-Async 的区别
-模块	v4.27.2-Async	v4.27.2-Async-Stable
-aiocqhttp 适配器	优化版（引入消息问题）	✅ 回退至官方 v4.27.2 版本
-其他核心优化（数据库、I/O、知识库等）	✅ 已优化	✅ 保持不变
-🧩 包含的优化（与 v4.27.2-Async 相同）
-数据库模块：新增复合索引、get_session_conversations 重写为两步查询、减少无谓删除操作。
+```markdown
+# ⚡ AstrBot v4.27.2-Async-Stable
 
-文件 I/O：SSL 上下文复用、64KB 缓冲写入、进度回调降频。
+**极致异步性能优化版 · 稳定修复版**
 
-知识库管理：懒加载、并发检索、结果缓存（LRU 128）。
+<br>
 
-LLM 元数据：内存+本地文件缓存、请求超时、降级警告。
+> [!CAUTION]
+> **⚠️ 这不是官方版本！**
+>
+> 本仓库是 [AstrBotDevs/AstrBot](https://github.com/AstrBotDevs/AstrBot) 的**性能优化分支**。
+> - **与官方后续版本不兼容**，执行 `git pull` 或直接覆盖升级将**丢失所有优化**。
+> - 本分支适合**长期独立维护**。
+> - 官方原版请移步：[AstrBotDevs/AstrBot](https://github.com/AstrBotDevs/AstrBot)
 
-备份导出：分页查询、异步化 I/O、线程池遍历。
+<br>
 
-消息组件：统一文件源解析、URI 解码缓存。
+<div>
+<img src="https://img.shields.io/badge/版本-4.27.2--Async--Stable-76bad9?style=flat-square&label=Release">
+<img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="python">
+<img src="https://img.shields.io/badge/状态-稳定-brightgreen?style=flat-square">
+</div>
 
-消息链工具：生成器优化、提前返回。
+---
 
-详细改动请查看 Release Notes of v4.27.2-Async。
+## 📌 这个版本是什么？
 
-🛠️ 修复的问题
-✅ 修复 aiocqhttp 适配器在优化后无法正常接收/发送消息的问题（终端无日志）。
+**v4.27.2-Async-Stable** 是基于官方 v4.27.2 的性能优化分支，在保留全部核心优化的基础上，**修复了 v4.27.2-Async 版本中私聊回复速度异常缓慢的问题**。
 
-✅ 回退后消息收发功能恢复稳定，日志正常输出。
+### 核心变更
 
-📦 安装方法
-方式一：下载 ZIP 包（推荐）
-点击本页面下方的 "Source code (zip)" 下载。
+| 类型 | 文件数 | 说明 |
+|------|--------|------|
+| **核心优化（保留）** | 10 个 | 数据库、I/O、知识库、消息组件等深度优化 |
+| **场景识别（新增）** | 3 个 | 群聊/私聊场景判断，为私聊轻量化奠定基础 |
+| **私聊加速（新增）** | 已在上述 3 个文件中实现 | 根据场景自动调整 Agent 参数 |
+| **适配器回退** | 2 个 | `aiocqhttp` 适配器回退官方版，保证消息收发稳定 |
 
-解压后进入目录，执行：
+---
 
-bash
+## 🚀 包含的优化文件清单
+
+以下 **10 个核心文件** 保留自 v4.27.2-Async 的全部优化：
+
+| 文件路径 | 优化内容 |
+|----------|----------|
+| `astrbot/core/message/components.py` | 统一文件源解析、URI 解码缓存（LRU 128） |
+| `astrbot/core/message/message_event_result.py` | 生成器替换列表推导、`squash_plain` 提前返回 |
+| `astrbot/core/utils/io.py` | SSL 上下文复用、64KB 缓冲写入、进度回调降频 |
+| `astrbot/core/utils/llm_metadata.py` | 内存+本地文件缓存（TTL 1h）、10s 超时、降级警告 |
+| `astrbot/core/db/sqlite.py` | 新增 3 个复合索引、`get_session_conversations` 两步查询 |
+| `astrbot/core/db/vec_db/faiss_impl/vec_db.py` | 向量归一化 NumPy 向量化、局部变量引用优化 |
+| `astrbot/core/knowledge_base/kb_mgr.py` | 懒加载、并发检索（`asyncio.gather`）、LRU 结果缓存 |
+| `astrbot/core/backup/exporter.py` | 分页导出（1000 条/页）、zip 写入 / `os.walk` 移至线程池 |
+| `astrbot/core/platform/sources/webchat/webchat_adapter.py` | 并发推送（`asyncio.gather`）、消息历史 TTL 缓存 |
+| `astrbot/__init__.py` | **（未修改，保留官方版本号）** |
+
+---
+
+## 🔧 新增：私聊场景识别与加速（3 个文件）
+
+为修复私聊回复慢的问题，新增了场景判断机制，让 Agent 在私聊时自动采用轻量化配置：
+
+| 文件路径 | 改动说明 |
+|----------|----------|
+| `astrbot/core/platform/astr_message_event.py` | 新增 `is_private_chat()` / `is_group_chat()` 方法，支持多平台 session_id 兜底判断 |
+| `astrbot/core/platform/platform.py` | 新增 `is_group_session()` 静态方法，统一场景判断逻辑 |
+| `astrbot/core/agent/runners/tool_loop_agent_runner.py` | 支持 `is_private_chat` 参数，私聊时自动限制最大步数（3）、重试次数（2）、上下文轮数（10） |
+
+---
+
+## 🔄 回退到官方版本的文件（2 个）
+
+为保证消息收发稳定性，以下文件回退至官方 v4.27.2 版本：
+
+| 文件路径 | 回退原因 |
+|----------|----------|
+| `astrbot/core/platform/sources/aiocqhttp/aiocqhttp_message_event.py` | 适配器优化引入消息收发异常，回退后恢复稳定 |
+| `astrbot/core/platform/sources/aiocqhttp/aiocqhttp_platform_adapter.py` | 同上 |
+
+> 回退后，QQ 平台的私聊和群聊消息收发功能完全恢复正常，日志正常输出。
+
+---
+
+## 🐛 修复的问题
+
+### 私聊回复速度异常缓慢
+在 v4.27.2-Async 中，私聊场景下 Agent 使用了与群聊相同的完整配置（上下文窗口大、工具调用轮数多、重试次数多），导致响应时间显著延长。
+
+**本版本修复方式：**
+- 在 `AstrMessageEvent` 和 `Platform` 基类中增加场景判断方法
+- Agent 执行器（`ToolLoopAgentRunner`）根据 `is_private_chat` 标志动态调整：
+  - 工具调用最大轮数：私聊降至 3 轮
+  - 重试次数：私聊降至 2 次
+  - 上下文保留轮数：私聊限制为 10 轮
+- 群聊配置保持不变，不受影响
+
+**效果：私聊回复速度恢复至正常水平，群聊性能不受影响。**
+
+---
+
+## 📦 安装方法
+
+### 方式一：下载 ZIP 包（推荐）
+1. 前往 [Releases](https://github.com/ARCH0712/AstrBot-Async/releases) 页面
+2. 下载 `Source code (zip)` 并解压
+3. 在解压目录执行：
+```bash
 uv tool install . --python 3.12
 astrbot init   # 首次运行初始化
 astrbot run
-方式二：Git 克隆
-bash
+```
+
+### 方式二：Git 克隆
+```bash
 git clone -b v4.27.2-Async-Stable https://github.com/ARCH0712/AstrBot-Async.git
 cd AstrBot-Async
 uv tool install . --python 3.12
 astrbot init
 astrbot run
-⚠️ 注意事项
-本版本不与官方后续版本兼容，请勿对官方仓库执行 git pull。
+```
 
-如果之前使用 v4.27.2-Async 并遇到了消息问题，强烈建议升级到此版本。
+---
 
-所有 data/ 目录下的数据（对话、配置、知识库）无需迁移，直接替换源码文件即可。
+## ⚠️ 更新风险与补救策略
 
-👤 维护者
-Arch712（@ARCH0712）
+| 你的操作 | 后果 | 补救方案 |
+|----------|------|----------|
+| 直接 `git pull` 官方仓库 | 所有优化被覆盖，性能回退 | 用本分支代码重新覆盖 `astrbot/core/` 目录 |
+| 覆盖升级到官方新 Release | 优化丢失，新索引不会被创建 | 保留旧版 `data/`，手动合入优化 |
+| 想合并官方新功能到优化版 | 可能产生代码冲突 | 使用 `git diff > patch`，新版本上 `git apply` |
 
-QQ：1658796850
+**建议**：将此分支视为独立项目长期维护。
 
-B站：UID3493123588098281
+---
 
-Email：LuoTianyi0712-@outlook.com
+## 👤 作者与联系方式
 
-Enjoy a stable and faster AstrBot! 🎉
+**维护者**：Arch712（@ARCH0712）
 
-Release: v4.27.2-Async-Stable
-🚀 Overview
-AstrBot v4.27.2-Async-Stable is a stable hotfix release based on v4.27.2-Async. It reverts the aiocqhttp adapter back to the official version while keeping all other performance optimizations, fixing the message handling issues (no terminal logs, message receiving/sending failures) caused by the optimized adapter.
+- 💬 QQ：1658796850
+- 📺 B站：[UID3493123588098281](https://space.bilibili.com/3493123588098281)
+- 📧 Email：LuoTianyi0712-@outlook.com
+- 🏠 GitHub：[ARCH0712](https://github.com/ARCH0712)
 
-⚠️ This is still a non-official fork and is not compatible with future official updates.
-Official version: AstrBotDevs/AstrBot
+---
 
-📌 Differences from v4.27.2-Async
-Module	v4.27.2-Async	v4.27.2-Async-Stable
-aiocqhttp adapter	Optimized (caused message issues)	✅ Reverted to official v4.27.2
-Other core optimizations (DB, I/O, KB, etc.)	✅ Optimized	✅ Kept unchanged
-🧩 Included Optimizations (same as v4.27.2-Async)
-Database: Added composite indexes, rewrote get_session_conversations, reduced redundant deletions.
+## 📄 版权声明
 
-File I/O: SSL context reuse, 64KB buffered writes, progress callback frequency reduction.
+本仓库所有代码基于 [AstrBotDevs/AstrBot](https://github.com/AstrBotDevs/AstrBot) 修改，遵循 **MIT 协议**。
 
-Knowledge Base: Lazy loading, concurrent retrieval, LRU result caching.
+- 官方版权归 AstrBotDevs 所有
+- 优化分支版权归 Arch712 所有
 
-LLM Metadata: In-memory + local file cache, 10s timeout, degraded logging.
+---
 
-Backup Export: Paginated queries, async I/O, thread-pool traversal.
+<div align="center">
 
-Message Components: Unified file source parsing, URI decoding cache.
+_高性能，永不止步。_
 
-Message Chain Tools: Generator expressions, early returns.
+<img src="https://files.astrbot.app/watashiwa-koseino-desukara.gif" width="100"/>
 
-For full details, see Release Notes of v4.27.2-Async.
+</div>
+```
 
-🛠️ Fixed Issues
-✅ Fixed aiocqhttp adapter message handling failures (no terminal output) caused by the optimization.
+---
 
-✅ After revert, message sending/receiving works stably, and logs are printed normally.
+这份 README 可以直接复制到你的仓库根目录，覆盖原有文件，然后提交推送。里面清晰说明了：
+- 保留了哪些优化（10 个文件）
+- 新增了哪些文件（3 个场景判断）
+- 回退了哪些文件（2 个 aiocqhttp）
+- 私聊问题的根因和修复方案
 
-📦 Installation
-Option 1: Download ZIP (Recommended)
-Click "Source code (zip)" below.
-
-Extract and navigate to the folder, then run:
-
-bash
-uv tool install . --python 3.12
-astrbot init   # first time only
-astrbot run
-Option 2: Git Clone
-bash
-git clone -b v4.27.2-Async-Stable https://github.com/ARCH0712/AstrBot-Async.git
-cd AstrBot-Async
-uv tool install . --python 3.12
-astrbot init
-astrbot run
-⚠️ Important Notes
-This version is not compatible with future official updates. Do not run git pull on the official repository.
-
-If you were using v4.27.2-Async and encountered message issues, we strongly recommend upgrading to this version.
-
-All data in the data/ directory (conversations, config, knowledge base) does not need migration; just replace the source files.
-
-👤 Maintainer
-Arch712（@ARCH0712）
-
-QQ：1658796850
-
-Bilibili：UID3493123588098281
-
-Email：LuoTianyi0712-@outlook.com
-
-Enjoy a stable and faster AstrBot! 🎉
-
+如果你需要调整措辞或增减内容，随时告诉我。
